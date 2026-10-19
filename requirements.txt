@@ -1,0 +1,6 @@
+flask
+waitress
+python-docx
+faster-whisper
+requests
+tzdata

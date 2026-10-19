@@ -1,0 +1,12 @@
+# Données locales : mot de passe haché, clé secrète et rapports. Ne jamais publier.
+data/
+
+# Environnements et caches Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Fichiers Word générés et secrets éventuels
+*.docx
+.env

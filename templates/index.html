@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Rapports CVC</title>
+<style>
+  :root { --bg:#121212; --panel:#1b1b1b; --line:#2e2e2e; --txt:#e6e6e6; --mut:#8c8c8c; --rec:#b3261e; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt);
+         font:16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; padding:16px; }
+  main { max-width:640px; margin:0 auto; }
+  header { display:flex; justify-content:space-between; align-items:baseline;
+           padding-bottom:12px; margin-bottom:16px; border-bottom:1px solid var(--line); }
+  h1 { font-size:1.05rem; font-weight:600; margin:0; }
+  a { color:var(--txt); }
+  header a { color:var(--mut); font-size:.9rem; }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:4px;
+            padding:16px; margin-bottom:16px; }
+  h2 { font-size:.8rem; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+       color:var(--mut); margin:0 0 12px; }
+  label { display:block; color:var(--mut); font-size:.85rem; margin:12px 0 4px; }
+  label:first-of-type { margin-top:0; }
+  input, textarea { width:100%; padding:10px 12px; border:1px solid #3a3a3a; border-radius:4px;
+                    background:var(--bg); color:var(--txt); font:inherit; }
+  input:focus, textarea:focus { outline:2px solid #6b6b6b; outline-offset:0; }
+  textarea { min-height:200px; resize:vertical; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  button { width:100%; padding:14px; border:1px solid var(--txt); border-radius:4px;
+           font:inherit; font-weight:600; cursor:pointer; }
+  #rec { background:var(--txt); color:var(--bg); }
+  #rec.on { background:var(--rec); border-color:var(--rec); color:#fff; }
+  #gen { background:transparent; color:var(--txt); margin-top:12px; }
+  .ctrl { display:grid; grid-template-columns:1fr; gap:10px; }
+  .ctrl.on { grid-template-columns:2fr 1fr; }
+  #pause { display:none; background:transparent; color:var(--txt); }
+  .ctrl.on #pause { display:block; }
+  button:disabled { opacity:.4; cursor:default; }
+  .st { color:var(--mut); font-size:.9rem; margin:10px 0 0; min-height:1.4em; }
+  ul { list-style:none; padding:0; margin:0; }
+  li a { display:block; padding:10px 0; border-bottom:1px solid var(--line);
+         text-decoration:none; font-size:.92rem; word-break:break-all; }
+  li:last-child a { border-bottom:0; }
+  li a:hover { text-decoration:underline; }
+  .vide { color:var(--mut); font-size:.9rem; }
+</style>
+</head>
+<body>
+<main>
+  <header><h1>Rapport d'intervention CVC</h1><a href="/logout">Déconnexion</a></header>
+
+  <section>
+    <h2>Intervention</h2>
+    <div class="row">
+      <div><label for="chantier">Chantier / site</label><input id="chantier" placeholder="ex. Lycée Curie, CTA 2"></div>
+      <div><label for="tech">Technicien</label><input id="tech" value="{{ technicien }}" placeholder="Nom du technicien"></div>
+    </div>
+    <div class="row">
+      <div><label for="debut">Heure de début</label><input id="debut" type="time"></div>
+      <div><label for="fin">Heure de fin</label><input id="fin" type="time"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Dictée</h2>
+    <div class="ctrl" id="ctrl">
+      <button id="rec" type="button">Démarrer la dictée</button>
+      <button id="pause" type="button">Pause</button>
+    </div>
+    <p class="st" id="st"></p>
+    <label for="txt">Transcription (modifiable avant de générer)</label>
+    <textarea id="txt" placeholder="Le texte dicté apparaît ici."></textarea>
+    <button id="gen" type="button" disabled>Générer le rapport Word</button>
+  </section>
+
+  <section>
+    <h2>Derniers rapports</h2>
+    <ul id="list"></ul>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const H = { "X-Requested-With": "fetch" };
+let rec, chunks = [], stream, timer, t0, acc = 0;
+
+// Le chantier est mémorisé sur cet appareil pour gagner du temps
+try { $("chantier").value = localStorage.getItem("chantier") || ""; } catch (e) {}
+$("chantier").addEventListener("input", () => {
+  try { localStorage.setItem("chantier", $("chantier").value); } catch (e) {}
+});
+
+function setSt(t) { $("st").textContent = t; }
+
+function fmt(ms) {
+  const s = Math.floor(ms / 1000);
+  return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+}
+
+function elapsed() {
+  return acc + (rec && rec.state === "recording" ? Date.now() - t0 : 0);
+}
+
+function tick() { setSt("Enregistrement en cours : " + fmt(elapsed())); }
+
+$("rec").onclick = async () => {
+  if (rec && rec.state === "recording") { rec.stop(); return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    setSt("Micro refusé ou indisponible (la page doit être en HTTPS).");
+    return;
+  }
+  chunks = [];
+  rec = new MediaRecorder(stream);
+  rec.ondataavailable = e => chunks.push(e.data);
+  rec.onstop = async () => {
+    clearInterval(timer);
+    stream.getTracks().forEach(t => t.stop());
+    $("ctrl").classList.remove("on");
+    $("pause").textContent = "Pause";
+    $("rec").classList.remove("on");
+    $("rec").textContent = "Démarrer la dictée";
+    setSt("Transcription en cours, cela peut prendre un moment.");
+    $("rec").disabled = true;
+    const fd = new FormData();
+    fd.append("audio", new Blob(chunks, { type: rec.mimeType }), "dictee");
+    try {
+      const r = await fetch("/api/transcribe", { method: "POST", body: fd, headers: H });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || r.status);
+      $("txt").value = ($("txt").value + " " + j.text).trim();
+      setSt("Transcription ajoutée. Relisez le texte, puis générez le rapport.");
+      $("gen").disabled = !$("txt").value.trim();
+    } catch (e) { setSt("Erreur : " + e.message); }
+    $("rec").disabled = false;
+  };
+  rec.start();
+  acc = 0;
+  t0 = Date.now();
+  timer = setInterval(tick, 500);
+  tick();
+  $("ctrl").classList.add("on");
+  $("rec").classList.add("on");
+  $("rec").textContent = "Arrêter l'enregistrement";
+};
+
+// Pause / reprise : tout reste dans le même enregistrement, transcrit à l'arrêt
+$("pause").onclick = () => {
+  if (!rec) return;
+  if (rec.state === "recording") {
+    acc += Date.now() - t0;
+    rec.pause();
+    clearInterval(timer);
+    $("pause").textContent = "Reprendre";
+    setSt("En pause à " + fmt(acc) + ". Appuyez sur Reprendre pour continuer la dictée.");
+  } else if (rec.state === "paused") {
+    t0 = Date.now();
+    rec.resume();
+    timer = setInterval(tick, 500);
+    $("pause").textContent = "Pause";
+    tick();
+  }
+};
+
+$("txt").addEventListener("input", () => { $("gen").disabled = !$("txt").value.trim(); });
+
+$("gen").onclick = async () => {
+  $("gen").disabled = true;
+  setSt("Rédaction du rapport en cours, cela peut prendre une à deux minutes. Ne fermez pas la page.");
+  const meta = {
+    chantier: $("chantier").value, technicien: $("tech").value,
+    debut: $("debut").value, fin: $("fin").value,
+    date: new Date().toLocaleDateString("fr-FR"),
+  };
+  try {
+    const r = await fetch("/api/rapport", {
+      method: "POST", headers: { ...H, "Content-Type": "application/json" },
+      body: JSON.stringify({ texte: $("txt").value, meta }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    setSt(j.mode === "ia"
+      ? "Rapport rédigé et mis en forme, téléchargement en cours."
+      : "Attention : l'IA de reformulation n'est pas disponible, le rapport reprend la dictée sans reformulation. Vérifiez qu'Ollama est lancé sur le PC.");
+    $("txt").value = "";
+    window.location = "/rapports/" + encodeURIComponent(j.fichier); // télécharge le .docx
+    loadList();
+  } catch (e) { setSt("Erreur : " + e.message); $("gen").disabled = false; }
+};
+
+async function loadList() {
+  const r = await fetch("/api/rapports", { headers: H });
+  if (!r.ok) return;
+  const files = await r.json();
+  $("list").innerHTML = "";
+  if (!files.length) {
+    const li = document.createElement("li");
+    li.className = "vide"; li.textContent = "Aucun rapport pour le moment.";
+    $("list").appendChild(li);
+    return;
+  }
+  for (const f of files) {
+    const li = document.createElement("li"), a = document.createElement("a");
+    a.href = "/rapports/" + encodeURIComponent(f); a.textContent = f;
+    li.appendChild(a); $("list").appendChild(li);
+  }
+}
+loadList();
+</script>
+</body>
+</html>

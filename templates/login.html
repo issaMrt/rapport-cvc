@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Rapports CVC</title>
+<style>
+  :root { --bg:#121212; --panel:#1b1b1b; --line:#2e2e2e; --txt:#e6e6e6; --mut:#8c8c8c; --err:#e5736b; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg);
+         color:var(--txt); font:16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; padding:16px; }
+  form { background:var(--panel); border:1px solid var(--line); border-radius:4px;
+         padding:24px; width:100%; max-width:340px; }
+  h1 { margin:0 0 4px; font-size:1.05rem; font-weight:600; }
+  p.sub { margin:0 0 20px; color:var(--mut); font-size:.9rem; }
+  input, button { width:100%; padding:12px; border-radius:4px; font:inherit; }
+  input { background:var(--bg); color:var(--txt); border:1px solid #3a3a3a; margin-bottom:12px; }
+  input:focus { outline:2px solid #6b6b6b; }
+  button { background:var(--txt); color:var(--bg); border:1px solid var(--txt); font-weight:600; cursor:pointer; }
+  .err { color:var(--err); margin:0 0 12px; font-size:.9rem; }
+</style>
+</head>
+<body>
+<form method="post">
+  <h1>Rapport d'intervention CVC</h1>
+  <p class="sub">Accès réservé au technicien.</p>
+  {% if error %}<p class="err">{{ error }}</p>{% endif %}
+  <input type="password" name="password" placeholder="Mot de passe" autocomplete="current-password" required autofocus>
+  <button type="submit">Se connecter</button>
+</form>
+</body>
+</html>
